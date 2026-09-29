@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useMemo, useState } from "react";
+import type { Key } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Table, Button, Modal, Space, Popconfirm, message, Select } from "antd";
 import {
@@ -11,41 +12,69 @@ import {
 } from "@ant-design/icons";
 import type { ColumnsType } from "antd/es/table";
 import {
-  useGetCategories,
+  CATEGORY_TREE_KEY,
   useCreateCategory,
-  useUpdateCategory,
   useDeleteCategory,
+  useGetCategoryTree,
+  useUpdateCategory,
 } from "@/hooks/api/categoryApi";
-
-interface Category {
-  id: number;
-  name: string;
-  parentId?: number | null;
-  parentName?: string;
-  children?: Category[]; // اضافه شدن آرایه فرزندان برای نمایش درختی در جدول
-}
+import {
+  collectCategoryIds,
+  findCategoryNode,
+  flattenCategoryTree,
+  indentCategoryLabel,
+  type CategoryNode,
+} from "@/lib/categoryTree";
 
 export default function CategoriesPage() {
   const queryClient = useQueryClient();
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
-  const { data: catData, isLoading } = useGetCategories(page, pageSize);
+  const { data: tree, isLoading } = useGetCategoryTree();
   const createCategory = useCreateCategory();
   const updateCategory = useUpdateCategory();
   const deleteCategory = useDeleteCategory();
 
-  const categories = catData?.items ?? [];
-  const total = catData?.totalCount ?? 0;
-
-  // دریافت همه دسته‌بندی‌ها جهت استفاده در Select والد و ساختار درختی
-  const { data: allCatsData } = useGetCategories(1, 1000);
-  const allCats = (allCatsData?.items ?? []) as Category[];
+  const categories = useMemo(() => tree ?? [], [tree]);
+  const flat = useMemo(() => flattenCategoryTree(categories), [categories]);
+  const flatById = useMemo(
+    () => new Map(flat.map((category) => [category.id, category])),
+    [flat]
+  );
 
   const [modalOpen, setModalOpen] = useState(false);
   const [confirmLoading, setConfirmLoading] = useState(false);
-  const [editingCategory, setEditingCategory] = useState<Category | null>(null);
+  const [editingCategory, setEditingCategory] = useState<CategoryNode | null>(
+    null
+  );
   const [name, setName] = useState("");
   const [parentId, setParentId] = useState<number | undefined>();
+
+  // Keep every parent row expanded so deeper levels stay visible by default.
+  const parentIds = useMemo(() => {
+    const ids: number[] = [];
+    const walk = (nodes?: CategoryNode[]) => {
+      for (const node of nodes ?? []) {
+        if (node.children?.length) {
+          ids.push(node.id);
+          walk(node.children);
+        }
+      }
+    };
+    walk(categories);
+    return ids;
+  }, [categories]);
+
+  // Rows are expanded by default; we only remember which ones were collapsed.
+  const [collapsedKeys, setCollapsedKeys] = useState<Key[]>([]);
+  const expandedKeys = useMemo(
+    () => parentIds.filter((id) => !collapsedKeys.includes(id)),
+    [parentIds, collapsedKeys]
+  );
+
+  const invalidateCategories = () => {
+    queryClient.invalidateQueries({ queryKey: CATEGORY_TREE_KEY });
+    // The storefront reads the paginated list, so refresh it as well.
+    queryClient.invalidateQueries({ queryKey: ["categories"] });
+  };
 
   const openAddModal = () => {
     setEditingCategory(null);
@@ -54,15 +83,15 @@ export default function CategoriesPage() {
     setModalOpen(true);
   };
 
-  // تابع جدید برای افزودن فرزند مستقیم به یک دسته خاص
-  const openAddChildModal = (parentRecord: Category) => {
+  // افزودن فرزند مستقیم به یک دسته‌بندی مشخص
+  const openAddChildModal = (parentRecord: CategoryNode) => {
     setEditingCategory(null);
     setName("");
-    setParentId(parentRecord.id); // تنظیم والد پیش‌فرض روی دسته‌بندی کلیک شده
+    setParentId(parentRecord.id);
     setModalOpen(true);
   };
 
-  const openEditModal = (record: Category) => {
+  const openEditModal = (record: CategoryNode) => {
     setEditingCategory(record);
     setName(record.name);
     setParentId(record.parentId ?? undefined);
@@ -87,7 +116,7 @@ export default function CategoriesPage() {
         });
         message.success("دسته‌بندی ایجاد شد");
       }
-      queryClient.invalidateQueries({ queryKey: ["categories"] });
+      invalidateCategories();
       setModalOpen(false);
     } catch {
       message.error("خطا در عملیات");
@@ -100,18 +129,33 @@ export default function CategoriesPage() {
     try {
       await deleteCategory.mutateAsync(id);
       message.success("دسته‌بندی با موفقیت حذف شد");
-      queryClient.invalidateQueries({ queryKey: ["categories"] });
+      invalidateCategories();
     } catch {
       message.error("خطا در حذف دسته‌بندی");
     }
   };
 
-  const columns: ColumnsType<Category> = [
+  // A category cannot be its own parent, nor a descendant of itself.
+  const parentOptions = useMemo(() => {
+    const blocked = editingCategory
+      ? collectCategoryIds(findCategoryNode(categories, editingCategory.id))
+      : new Set<number>();
+
+    return flat
+      .filter((category) => !blocked.has(category.id))
+      .map((category) => ({
+        value: category.id,
+        label: category.name,
+        depth: category.depth,
+      }));
+  }, [flat, categories, editingCategory]);
+
+  const columns: ColumnsType<CategoryNode> = [
     {
       title: "شناسه",
       dataIndex: "id",
       key: "id",
-      width: 100,
+      width: 90,
       align: "center",
     },
     {
@@ -125,10 +169,11 @@ export default function CategoriesPage() {
       key: "parentId",
       width: 150,
       render: (pid: number | null | undefined) => {
-        if (!pid) return <span className="text-gray-400 text-xs">—</span>;
-        const parent = allCats.find((c) => c.id === pid);
+        if (!pid) return <span className="text-xs text-gray-400">—</span>;
         return (
-          <span className="text-xs text-gray-600">{parent?.name ?? pid}</span>
+          <span className="text-xs text-gray-600">
+            {flatById.get(pid)?.name ?? pid}
+          </span>
         );
       },
     },
@@ -139,7 +184,7 @@ export default function CategoriesPage() {
       align: "center",
       render: (_, record) => (
         <Space size="middle">
-          {/* دکمه افزودن زیرمجموعه (فرزند) */}
+          {/* افزودن زیرمجموعه در هر سطحی */}
           <Button
             type="link"
             title="افزودن زیرمجموعه"
@@ -163,7 +208,6 @@ export default function CategoriesPage() {
       ),
     },
   ];
-console.log(categories);
 
   return (
     <div>
@@ -178,24 +222,21 @@ console.log(categories);
 
       <Table
         columns={columns}
-        dataSource={Array.isArray(categories) ? categories : []}
+        dataSource={categories}
         rowKey="id"
         loading={isLoading}
-        className="border border-gray-100 rounded-lg"
-        // مدیریت نحوه باز شدن و پنهان کردن آیکون پلاس در ردیف‌های بدون فرزند
+        className="rounded-lg border border-gray-100"
+        indentSize={22}
         expandable={{
-          rowExpandable: (record) => record.children?.length >=1,
-        }}
-        pagination={{
-          current: page,
-          pageSize,
-          total,
-          showSizeChanger: true,
-          onChange: (p, ps) => {
-            setPage(p);
-            setPageSize(ps);
+          // Every level can be expanded, not just the first one.
+          rowExpandable: (record) => (record.children?.length ?? 0) > 0,
+          expandedRowKeys: expandedKeys,
+          onExpandedRowsChange: (keys) => {
+            const visible = new Set(keys);
+            setCollapsedKeys(parentIds.filter((id) => !visible.has(id)));
           },
         }}
+        pagination={{ defaultPageSize: 10, showSizeChanger: true }}
       />
 
       <Modal
@@ -208,7 +249,7 @@ console.log(categories);
         cancelText="انصراف"
         centered
       >
-        <div className="py-4 space-y-4">
+        <div className="space-y-4 py-4">
           <div>
             <label className="mb-2 block text-sm font-medium text-gray-700">
               نام دسته‌بندی
@@ -233,9 +274,12 @@ console.log(categories);
               placeholder="بدون والد (سرگروه)"
               className="w-full"
               size="large"
-              options={allCats
-                .filter((c) => c.id !== editingCategory?.id)
-                .map((c) => ({ value: c.id, label: c.name }))}
+              showSearch
+              optionFilterProp="label"
+              options={parentOptions}
+              optionRender={(option) =>
+                indentCategoryLabel(option.data.label, option.data.depth ?? 0)
+              }
             />
           </div>
         </div>

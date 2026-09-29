@@ -38,6 +38,7 @@ import {
   useDeleteProductImage,
 } from "@/hooks/api/productApi";
 import ColorSelector from "./ColorSelector";
+import { indentCategoryLabel } from "@/lib/categoryTree";
 import type { RootState } from "@/store/store";
 
 interface Product {
@@ -94,7 +95,7 @@ export default function ProductForm({
   submitting: boolean;
   onSubmit: () => void;
   onCancel: () => void;
-  categoryOptions: { value: number; label: string }[];
+  categoryOptions: { value: number; label: string; depth?: number }[];
   brandOptions: { value: number; label: string }[];
   sizes: { id: number; name: string }[];
   queryClient: ReturnType<typeof useQueryClient>;
@@ -240,6 +241,11 @@ export default function ProductForm({
               size="large"
               options={categoryOptions}
               placeholder="انتخاب کنید"
+              showSearch
+              optionFilterProp="label"
+              optionRender={(option) =>
+                indentCategoryLabel(option.data.label, option.data.depth ?? 0)
+              }
             />
           </div>
           <div>

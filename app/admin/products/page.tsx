@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   Table,
@@ -31,8 +31,9 @@ import {
   useDeleteProduct,
 } from "@/hooks/api/productApi";
 import { useGetBrands } from "@/hooks/api/brandApi";
-import { useGetCategories } from "@/hooks/api/categoryApi";
+import { useGetCategoryTree } from "@/hooks/api/categoryApi";
 import { useGetSizes } from "@/hooks/api/sizeApi";
+import { flattenCategoryTree, indentCategoryLabel } from "@/lib/categoryTree";
 import ProductForm, { emptyProduct } from "@/components/admin/ProductForm";
 
 interface Product {
@@ -88,7 +89,7 @@ export default function ProductsPage() {
     PageSize: pageSize,
   });
   const { data: brandsData } = useGetBrands(1, 1000);
-  const { data: categoriesData } = useGetCategories(1, 1000);
+  const { data: categoryTree } = useGetCategoryTree();
   const { data: sizes } = useGetSizes();
   const createProduct = useCreateProduct();
   const updateProduct = useUpdateProduct();
@@ -104,8 +105,24 @@ export default function ProductsPage() {
   const activeCount = productList.filter((p) => p.isActive).length;
   const inactiveCount = productList.filter((p) => !p.isActive).length;
 
-  const rawCats = (categoriesData?.items ?? []) as { id: number; name: string }[];
-  const categoryOptions = rawCats.map((c) => ({ value: c.id, label: c.name }));
+  // Flatten the full tree (every depth) so leaf categories are selectable.
+  const categoryFlat = useMemo(
+    () => flattenCategoryTree(categoryTree),
+    [categoryTree]
+  );
+  const categoryOptions = useMemo(
+    () =>
+      categoryFlat.map((category) => ({
+        value: category.id,
+        label: category.name,
+        depth: category.depth,
+      })),
+    [categoryFlat]
+  );
+  const categoryNameById = useMemo(
+    () => new Map(categoryFlat.map((category) => [category.id, category.name])),
+    [categoryFlat]
+  );
   const rawBrands = (brandsData?.items ?? []) as { id: number; name: string }[];
   const brandOptions = rawBrands.map((b) => ({ value: b.id, label: b.name }));
   const sizeList = (Array.isArray(sizes) ? sizes : []) as { id: number; name: string }[];
@@ -201,14 +218,11 @@ export default function ProductsPage() {
       dataIndex: "categoryId",
       width: 130,
       align: "center",
-      render: (id: number) => {
-        const cat = categoryOptions.find((c) => c.value === id);
-        return (
-          <Tag color="blue" className="rounded-full px-3">
-            {cat?.label ?? id}
-          </Tag>
-        );
-      },
+      render: (id: number) => (
+        <Tag color="blue" className="rounded-full px-3">
+          {categoryNameById.get(id) ?? id}
+        </Tag>
+      ),
     },
     {
       title: "وضعیت",
@@ -247,7 +261,17 @@ export default function ProductsPage() {
 
       <div className="mb-4 flex flex-wrap items-center gap-3">
         <Input placeholder="جستجو نام محصول..." prefix={<SearchOutlined className="text-gray-400" />} value={searchName} onChange={(e) => setSearchName(e.target.value)} className="w-56" allowClear />
-        <Select placeholder="دسته‌بندی" value={filterCategory} onChange={setFilterCategory} allowClear className="w-40" options={categoryOptions} />
+        <Select
+          placeholder="دسته‌بندی"
+          value={filterCategory}
+          onChange={setFilterCategory}
+          allowClear
+          className="w-40"
+          options={categoryOptions}
+          optionRender={(option) =>
+            indentCategoryLabel(option.data.label, option.data.depth ?? 0)
+          }
+        />
         <Select placeholder="برند" value={filterBrand} onChange={setFilterBrand} allowClear className="w-40" options={brandOptions} />
         <div className="flex-1" />
         <Button icon={<ReloadOutlined />} onClick={() => queryClient.invalidateQueries({ queryKey: ["products"] })}>بروزرسانی</Button>
@@ -264,7 +288,7 @@ export default function ProductsPage() {
         scroll={{ x: 800 }}
       />
 
-      <Modal title={null} open={modalOpen} onCancel={() => setModalOpen(false)} footer={null} centered width={960} destroyOnClose>
+      <Modal title={null} open={modalOpen} onCancel={() => setModalOpen(false)} footer={null} centered width={960} destroyOnHidden>
         <ProductForm
           form={form}
           setForm={setForm}
