@@ -12,9 +12,19 @@ import { useState } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { Spin } from "antd";
-import { SearchOutlined, GiftOutlined, StarFilled } from "@ant-design/icons";
+import {
+  SearchOutlined,
+  GiftOutlined,
+  StarFilled,
+  TruckOutlined,
+  SafetyCertificateOutlined,
+  CustomerServiceOutlined,
+} from "@ant-design/icons";
+import { motion } from "framer-motion";
 import { useGetProducts, useGetProductImages } from "@/hooks/api/productApi";
 import { useGetSpecialOffers, useGetOfferProducts } from "@/hooks/api/specialOfferApi";
+import { useGetCategories } from "@/hooks/api/categoryApi";
+import HeroHeader from "@/components/HeroHeader";
 import type { RootState } from "@/store/store";
 
 // ─── AutoMarquee (exact same as admin) ───
@@ -110,12 +120,29 @@ function HomePageContent() {
   const searchQuery = searchParams.get("search") ?? "";
   const { data: pData, isLoading: pLoad } = useGetProducts({ Name: searchQuery || undefined, PageSize: 12 });
   const { data: offers } = useGetSpecialOffers();
+  const { data: categoryData } = useGetCategories(1, 18);
 
   const products = (pData?.items ?? []) as { id: number; name: string; price: number; discountPrice?: number | null; isActive: boolean; averageRating?: number; ratingCount?: number }[];
   const offerList = (Array.isArray(offers) ? offers : []) as { id: number; name: string; color?: string | null }[];
+  const categories = (categoryData?.items ?? []) as { id: number; name: string }[];
 
   return (
     <div className="min-h-screen bg-gray-50">
+      {!searchQuery && <HeroHeader />}
+      {!searchQuery && categories.length > 0 && (
+        <motion.section
+          initial={{ opacity: 0, y: 20 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true, amount: 0.2 }}
+          transition={{ duration: 0.45 }}
+          className="mx-auto max-w-7xl px-6 pt-10"
+        >
+          <div className="mb-4 flex items-end justify-between"><div><p className="text-xs font-bold tracking-[.18em] text-blue-600">DISCOVER</p><h2 className="mt-1 text-2xl font-black text-slate-900">دسته‌بندی‌های محبوب</h2></div><Link href="/products" className="text-sm font-bold text-blue-600">همه محصولات</Link></div>
+          <div className="flex gap-3 overflow-x-auto pb-2 [scrollbar-width:none]">
+            {categories.map((category) => <Link key={category.id} href={`/products?category=${category.id}`} className="shrink-0 rounded-2xl border border-slate-200 bg-white px-5 py-3 text-sm font-bold text-slate-700 shadow-sm transition hover:-translate-y-0.5 hover:border-blue-200 hover:text-blue-600 hover:shadow-md">{category.name}</Link>)}
+          </div>
+        </motion.section>
+      )}
       <div className="mx-auto max-w-7xl px-6 py-8">
         <div className="mb-6 flex items-center justify-between">
           <h2 className="text-xl font-extrabold text-gray-800">

@@ -30,7 +30,7 @@ function ProductPreviewThumb({ productId }: { productId: number }) {
   );
 }
 
-export default function SearchDropdown() {
+export default function SearchDropdown({ variant = "default" }: { variant?: "default" | "hero" }) {
   const router = useRouter();
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
@@ -77,9 +77,9 @@ export default function SearchDropdown() {
   const handleSearch = () => {
     setOpen(false);
     if (query.trim()) {
-      router.push(`/?search=${encodeURIComponent(query.trim())}`);
+      router.push(`/products?search=${encodeURIComponent(query.trim())}`);
     } else {
-      router.push("/");
+      router.push("/products");
     }
   };
 
@@ -90,10 +90,10 @@ export default function SearchDropdown() {
   };
 
   return (
-    <div ref={ref} className="relative w-full max-w-xs">
+    <div ref={ref} className={`relative w-full ${variant === "hero" ? "max-w-none" : "max-w-xs"}`}>
       <Input
         size="large"
-        placeholder="جستجوی محصول..."
+        placeholder="جست‌وجوی محصول، برند یا دسته‌بندی..."
         prefix={<SearchOutlined className="text-gray-400 cursor-pointer" onClick={handleSearch} />}
         value={query}
         onChange={(e) => {
@@ -104,6 +104,7 @@ export default function SearchDropdown() {
         onKeyDown={handleKeyDown}
         onFocus={() => setOpen(true)}
         allowClear
+        className={variant === "hero" ? "!h-12 !rounded-2xl !border-0 !bg-transparent !px-3 !text-base !shadow-none" : ""}
       />
 
       {open && debouncedQuery.length >= 2 && (

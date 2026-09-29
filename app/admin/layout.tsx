@@ -16,6 +16,7 @@ import {
   BoxPlotOutlined,
   ColumnHeightOutlined,
   GiftOutlined,
+  PictureOutlined,
 } from "@ant-design/icons";
 
 import { Layout, Menu, Button, theme } from "antd";
@@ -76,6 +77,11 @@ export default function AdminLayout({
       icon: <GiftOutlined />,
       label: "بخش‌های ویژه",
     },
+    {
+      key: "/admin/header-media",
+      icon: <PictureOutlined />,
+      label: "رسانهٔ هدر",
+    },
   ];
 
   const selectedKey = (() => {
@@ -85,6 +91,7 @@ export default function AdminLayout({
     if (pathname.includes("/admin/sizes")) return "/admin/sizes";
     if (pathname.includes("/admin/special-offers"))
       return "/admin/special-offers";
+    if (pathname.includes("/admin/header-media")) return "/admin/header-media";
     return "users";
   })();
 

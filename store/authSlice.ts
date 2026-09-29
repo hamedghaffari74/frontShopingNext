@@ -55,7 +55,7 @@ export const getSavedAuth = () => {
 };
 
 const initialState: AuthState = {
-  baseApi: `${apiBaseUrl}/`,
+  baseApi: `${apiBaseUrl}`,
   api: `${apiBaseUrl}/api`,
   // Keep server and initial client output identical. The browser restores
   // localStorage after hydration in app/providers.tsx.

@@ -2,6 +2,16 @@ This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-
 
 ## Getting Started
 
+## Header media
+
+Administrators can open `/admin/header-media` to upload an image or video, edit its title, description, link and display order, or select it as the active storefront hero. Only one item can be active; selecting a new item automatically deactivates the previous one.
+
+The storefront reads the active item from `GET /api/HeaderMedia?onlyActive=true`. Uploaded files are public under the API base URL. Configure that URL locally with:
+
+```env
+NEXT_PUBLIC_API_BASE_URL=http://localhost:5037
+```
+
 First, run the development server:
 
 ```bash
